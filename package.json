@@ -1,0 +1,11 @@
+{
+  "name": "kcal",
+  "private": true,
+  "description": "Dansk kalorietæller med stregkodescanner (PWA)",
+  "scripts": {
+    "frida": "node tools/frida-til-json.js"
+  },
+  "devDependencies": {
+    "exceljs": "4.4.0"
+  }
+}

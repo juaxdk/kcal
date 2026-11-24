@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Kcal</title>
+  <meta name="theme-color" content="#16a34a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Kcal">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Dagbog -->
+  <main id="view-day" class="view">
+    <header class="daybar">
+      <button class="icon-btn" id="prev-day" aria-label="Forrige dag">‹</button>
+      <button class="day-title" id="day-title">I dag</button>
+      <button class="icon-btn" id="next-day" aria-label="Næste dag">›</button>
+    </header>
+
+    <section class="card summary">
+      <div class="kcal-row">
+        <div>
+          <div class="big" id="sum-kcal">0</div>
+          <div class="muted">af <span id="goal-kcal">0</span> kcal</div>
+        </div>
+        <div class="right">
+          <div class="big" id="sum-left">0</div>
+          <div class="muted" id="left-label">tilbage</div>
+        </div>
+      </div>
+      <div class="bar"><div class="fill" id="bar-kcal"></div></div>
+      <div class="macros">
+        <div class="macro"><span class="muted">Protein</span><b id="m-protein">0</b><div class="bar small"><div class="fill p" id="bar-protein"></div></div></div>
+        <div class="macro"><span class="muted">Kulhydrat</span><b id="m-carbs">0</b><div class="bar small"><div class="fill c" id="bar-carbs"></div></div></div>
+        <div class="macro"><span class="muted">Fedt</span><b id="m-fat">0</b><div class="bar small"><div class="fill f" id="bar-fat"></div></div></div>
+      </div>
+    </section>
+
+    <div id="meals"></div>
+  </main>
+
+  <!-- Indstillinger -->
+  <main id="view-settings" class="view" hidden>
+    <header class="daybar"><h1>Indstillinger</h1></header>
+    <section class="card">
+      <h2>Dagsmål</h2>
+      <form id="goals-form" class="grid2">
+        <label>Kcal<input type="number" inputmode="numeric" name="kcal" min="0"></label>
+        <label>Protein (g)<input type="number" inputmode="numeric" name="protein" min="0"></label>
+        <label>Kulhydrat (g)<input type="number" inputmode="numeric" name="carbs" min="0"></label>
+        <label>Fedt (g)<input type="number" inputmode="numeric" name="fat" min="0"></label>
+        <button class="btn primary span2" type="submit">Gem mål</button>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Mine fødevarer</h2>
+      <p class="muted">Varer du har scannet eller oprettet. Tryk for at redigere.</p>
+      <ul class="list" id="my-foods"></ul>
+    </section>
+    <section class="card">
+      <h2>Backup</h2>
+      <p class="muted">Data ligger kun på denne telefon. Tag en backup en gang imellem.</p>
+      <div class="row">
+        <button class="btn" id="export-btn">Eksportér</button>
+        <label class="btn">Importér<input type="file" id="import-file" accept="application/json" hidden></label>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Datakilder</h2>
+      <p class="muted">Råvarer: Frida – Fødevaredatabanken v6.1, DTU Fødevareinstituttet (<a href="https://doi.org/10.11583/DTU.32312844">frida.fooddata.dk</a>, CC BY 4.0).<br>
+      Stregkoder: <a href="https://world.openfoodfacts.org">Open Food Facts</a> (ODbL). Data er vejledende.</p>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="day" class="active">📒<span>Dagbog</span></button>
+    <button id="fab" class="fab" aria-label="Tilføj">＋</button>
+    <button data-view="settings">⚙️<span>Indstillinger</span></button>
+  </nav>
+
+  <!-- Tilføj-ark -->
+  <dialog id="add-sheet" class="sheet">
+    <div class="sheet-head">
+      <div class="seg" role="tablist">
+        <button data-tab="scan" class="active">Scan</button>
+        <button data-tab="search">Søg</button>
+        <button data-tab="manual">Opret</button>
+      </div>
+      <button class="icon-btn" data-close aria-label="Luk">✕</button>
+    </div>
+
+    <div class="tab" data-tab="scan">
+      <div id="reader"></div>
+      <p class="muted center" id="scan-status">Peg kameraet mod stregkoden</p>
+      <form id="barcode-form" class="row">
+        <input type="text" inputmode="numeric" name="code" placeholder="…eller skriv stregkoden" autocomplete="off">
+        <button class="btn" type="submit">Slå op</button>
+      </form>
+    </div>
+
+    <div class="tab" data-tab="search" hidden>
+      <form id="search-form" class="row">
+        <input type="search" name="q" placeholder="Søg fx havregryn, skyr…" autocomplete="off">
+        <button class="btn" type="submit">Søg</button>
+      </form>
+      <ul class="list" id="search-results"></ul>
+      <button class="btn ghost wide" id="off-search-btn" hidden>Søg i Open Food Facts</button>
+    </div>
+
+    <div class="tab" data-tab="manual" hidden>
+      <form id="food-form" class="grid2">
+        <input type="hidden" name="id">
+        <label class="span2">Navn<input name="name" required></label>
+        <label>Mærke<input name="brand"></label>
+        <label>Stregkode<input name="barcode" inputmode="numeric"></label>
+        <p class="span2 muted">Pr. 100 g (står på bagsiden af pakken)</p>
+        <label>Kcal<input type="number" step="any" inputmode="decimal" name="kcal" required></label>
+        <label>Protein<input type="number" step="any" inputmode="decimal" name="protein"></label>
+        <label>Kulhydrat<input type="number" step="any" inputmode="decimal" name="carbs"></label>
+        <label>Fedt<input type="number" step="any" inputmode="decimal" name="fat"></label>
+        <label class="span2">Portion i gram (valgfri)<input type="number" step="any" inputmode="decimal" name="serving"></label>
+        <button class="btn primary span2" type="submit">Gem fødevare</button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Mængde-ark -->
+  <dialog id="amount-sheet" class="sheet">
+    <div class="sheet-head">
+      <div>
+        <h2 id="amount-name">–</h2>
+        <div class="muted" id="amount-sub"></div>
+      </div>
+      <button class="icon-btn" data-close aria-label="Luk">✕</button>
+    </div>
+    <form id="amount-form">
+      <div class="grams-row">
+        <input type="number" step="any" inputmode="decimal" name="grams" id="grams-input" min="0">
+        <span>gram</span>
+      </div>
+      <div class="chips" id="grams-chips"></div>
+      <div class="preview" id="amount-preview"></div>
+      <label>Måltid<select name="meal" id="meal-select"></select></label>
+      <div class="row">
+        <button class="btn danger" type="button" id="delete-entry" hidden>Slet</button>
+        <button class="btn primary grow" type="submit" id="amount-submit">Tilføj</button>
+      </div>
+    </form>
+  </dialog>
+
+  <input type="date" id="date-picker" class="visually-hidden" tabindex="-1">
+  <div id="toast" role="status" popover="manual"></div>
+
+  <script src="vendor/html5-qrcode.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
