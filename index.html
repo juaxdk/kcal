@@ -114,6 +114,14 @@
     </div>
 
     <div class="tab" data-tab="manual" hidden>
+      <label class="btn wide photo-btn">📷 Tag billede af næringsindholdet
+        <input type="file" accept="image/*" id="label-photo" hidden>
+      </label>
+      <div id="ocr-box" hidden>
+        <img id="ocr-img" alt="Billede af næringsdeklaration">
+        <p id="ocr-status" class="muted"></p>
+        <details><summary class="muted">Se aflæst tekst</summary><pre id="ocr-text"></pre></details>
+      </div>
       <form id="food-form" class="grid2">
         <input type="hidden" name="id">
         <label class="span2">Navn<input name="name" required></label>

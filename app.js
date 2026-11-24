@@ -2,6 +2,8 @@
 // Data gemmes i localStorage på telefonen. Stregkoder slås op i Open Food Facts,
 // råvarer kan søges i Frida (DTU), hvis data/frida.json findes.
 
+import { readLabel, parseNutrition } from './ocr.js';
+
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
@@ -451,7 +453,70 @@ function resetFoodForm() {
   f.reset();
   f.id.value = '';
   f.querySelector('[type=submit]').textContent = 'Gem fødevare';
+  clearOcr();
 }
+
+// ---------- Billede af næringsindhold ----------
+let ocrUrl = null;
+let ocrRun = 0;
+
+function clearOcr() {
+  ocrRun++; // ignorér en aflæsning der stadig kører
+  $('#ocr-box').hidden = true;
+  $('#ocr-text').textContent = '';
+  $('#ocr-img').classList.remove('zoom');
+  if (ocrUrl) { URL.revokeObjectURL(ocrUrl); ocrUrl = null; }
+  $$('#food-form input').forEach((i) => i.classList.remove('ocr-filled', 'ocr-missing'));
+}
+
+$('#label-photo').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  clearOcr();
+  const run = ocrRun;
+  ocrUrl = URL.createObjectURL(file);
+  $('#ocr-img').src = ocrUrl;
+  $('#ocr-box').hidden = false;
+  const status = $('#ocr-status');
+  status.classList.remove('warn');
+  const btn = $('.photo-btn');
+  btn.style.pointerEvents = 'none';
+  try {
+    const text = await readLabel(file, (msg) => { if (run === ocrRun) status.textContent = msg; });
+    if (run !== ocrRun) return;
+    $('#ocr-text').textContent = text.trim() || '(ingen tekst fundet)';
+    const found = parseNutrition(text);
+    const f = $('#food-form');
+    for (const m of MACROS) {
+      const input = f[m];
+      if (found[m] != null) {
+        input.value = Math.round(found[m] * 10) / 10;
+        input.classList.add('ocr-filled');
+      } else {
+        input.classList.add('ocr-missing');
+      }
+    }
+    const n = MACROS.filter((m) => found[m] != null).length;
+    status.classList.toggle('warn', n < 4);
+    status.textContent = n === 0
+      ? 'Kunne ikke finde tallene. Prøv et skarpere billede tæt på tabellen – eller skriv dem selv.'
+      : n < 4
+        ? `Fandt ${n} af 4 værdier. Tjek dem mod billedet og udfyld de stiplede felter.`
+        : 'Fandt alle 4 værdier. Tjek dem mod billedet, før du gemmer.';
+    if (!f.name.value) f.name.focus({ preventScroll: true });
+  } catch (err) {
+    if (run !== ocrRun) return;
+    console.warn(err);
+    status.classList.add('warn');
+    status.textContent = 'Aflæsningen fejlede – tjek forbindelsen (første gang skal der hentes data).';
+  } finally {
+    btn.style.pointerEvents = '';
+  }
+};
+
+$('#ocr-img').onclick = (e) => e.target.classList.toggle('zoom');
+$('#food-form').addEventListener('input', (e) => e.target.classList?.remove('ocr-filled', 'ocr-missing'));
 
 function editFood(food) {
   const f = $('#food-form');

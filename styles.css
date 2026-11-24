@@ -122,6 +122,16 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 #reader video { width: 100% !important; object-fit: cover; }
 #scan-status { margin: 10px 0; }
 
+.photo-btn { margin: 0 0 12px; }
+#ocr-box { margin-bottom: 12px; }
+#ocr-img { display: block; width: 100%; max-height: 240px; object-fit: contain; background: var(--bg); border-radius: 12px; cursor: zoom-in; }
+#ocr-img.zoom { max-height: none; cursor: zoom-out; }
+#ocr-status { margin: 8px 0 4px; }
+#ocr-status.warn { color: var(--c); }
+#ocr-text { white-space: pre-wrap; font-size: 12px; background: var(--bg); padding: 8px; border-radius: 8px; max-height: 200px; overflow: auto; }
+input.ocr-filled { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+input.ocr-missing { border-color: var(--c); border-style: dashed; }
+
 .grams-row { display: flex; align-items: center; gap: 10px; }
 .grams-row input { font-size: 28px; font-weight: 700; text-align: center; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
