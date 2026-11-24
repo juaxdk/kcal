@@ -220,29 +220,154 @@ function showTab(tab) {
   delete $('#food-form').dataset.keep;
 }
 
-// ---------- Scanner ----------
-let scanner = null;
-let scanning = false;
-let handlingCode = false;
+// ---------- Stregkodescanner ----------
+// Kameraet styres af appen selv: html5-qrcode skalerer kamerabilledet ned til
+// scanfeltets størrelse på skærmen (~300 px) og mister skarpheden. Her afkodes
+// midten af kamerabilledet i fuld opløsning, skiftevis lige og drejet 90°
+// (afkoderen er markant bedre til den ene retning). Biblioteket bruges kun til at afkode.
+
+let decoder = null;
+function getDecoder() {
+  const lib = window.__Html5QrcodeLibrary__;
+  if (!lib) return null;
+  decoder ??= makeScanner(lib, 'file-reader').qrcode;
+  return decoder;
+}
+
+/** Tegn et udsnit af et billede/video på et lærred, evt. drejet 90°, og prøv at afkode det. */
+async function decodeRegion(source, sx, sy, sw, sh, maxSize, turn, robust = false) {
+  const scale = Math.min(1, maxSize / Math.max(sw, sh));
+  const w = Math.round(sw * scale), h = Math.round(sh * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = turn ? h : w;
+  canvas.height = turn ? w : h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (turn) { ctx.translate(h, 0); ctx.rotate(Math.PI / 2); }
+  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
+  try {
+    // "robust" prøver flere varianter (bruges til fotos); live-kameraet bruger den hurtige
+    const dec = getDecoder();
+    const res = await (robust ? dec.decodeRobustlyAsync(canvas) : dec.decodeAsync(canvas));
+    return /^\d{8,14}$/.test(res?.text) ? res.text : null;
+  } catch {
+    return null;
+  }
+}
+
+function createCameraScanner(container) {
+  let stream = null, timer = null, running = false, frame = 0;
+  const api = {
+    get running() { return running; },
+    async start(onCode) {
+      if (running) return;
+      if (!getDecoder()) throw new Error('Scanner kunne ikke indlæses');
+      running = true;
+      frame = 0;
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+      if (!running) { s.getTracks().forEach((t) => t.stop()); return; } // stoppet mens vi ventede
+      stream = s;
+      const video = document.createElement('video');
+      video.setAttribute('playsinline', '');
+      video.muted = true;
+      video.srcObject = stream;
+      const guide = document.createElement('div');
+      guide.className = 'scan-guide';
+      container.replaceChildren(video, guide);
+      await video.play();
+      let last = null, lastAt = 0;
+      const tick = async () => {
+        if (!running) return;
+        const vw = video.videoWidth, vh = video.videoHeight;
+        if (vw && vh) {
+          // Midterste 80 % – svarer til den hvide ramme på skærmen
+          const sw = vw * 0.8, sh = vh * 0.8;
+          const code = await decodeRegion(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 1100, frame++ % 2 === 1);
+          // Samme kode skal læses to gange inden for 1,5 s – så slipper falske fund fra støj ikke igennem
+          if (code && running) {
+            if (code === last && Date.now() - lastAt < 1500) {
+              api.stop();
+              onCode(code);
+              return;
+            }
+            last = code;
+            lastAt = Date.now();
+          }
+        }
+        if (running) timer = setTimeout(tick, 60);
+      };
+      tick();
+    },
+    stop() {
+      running = false;
+      clearTimeout(timer);
+      stream?.getTracks().forEach((t) => t.stop());
+      stream = null;
+      container.replaceChildren();
+    },
+  };
+  return api;
+}
+
+const scanner = createCameraScanner($('#reader'));
 
 async function startScanner() {
-  if (scanning) return;
-  const lib = window.__Html5QrcodeLibrary__;
-  if (!lib) { $('#scan-status').textContent = 'Scanner kunne ikke indlæses.'; return; }
-  scanner ??= makeScanner(lib, 'reader');
-  scanning = true;
-  handlingCode = false;
+  if (scanner.running) return;
   $('#scan-status').textContent = 'Peg kameraet mod stregkoden';
   try {
-    await scanner.start({ facingMode: 'environment' }, SCAN_CONFIG, onScan, () => {});
+    await scanner.start(onScan);
   } catch (err) {
-    scanning = false;
+    scanner.stop();
     $('#scan-status').textContent = cameraError();
     console.warn(err);
   }
 }
 
-const SCAN_CONFIG = { fps: 10, qrbox: (w, h) => ({ width: Math.min(w * 0.85, 320), height: Math.min(h * 0.5, 140) }) };
+/**
+ * Find en stregkode på et foto.
+ * Afkoderen finder sjældent en stregkode der kun fylder lidt af et stort foto,
+ * så ud over hele billedet prøves midten og et gitter af overlappende udsnit.
+ */
+async function decodeBarcodePhoto(file) {
+  if (!getDecoder()) return null;
+  const bmp = await createImageBitmap(file);
+  const W = bmp.width, H = bmp.height;
+  // Udsnit som [x, y, bredde, højde] i brøkdele af billedet – de mest sandsynlige først
+  const regions = [[0, 0, 1, 1], [0.2, 0.2, 0.6, 0.6]];
+  for (const y of [0, 0.25, 0.5]) for (const x of [0, 0.25, 0.5]) regions.push([x, y, 0.5, 0.5]);
+  // 12–13 cifre (EAN-13/UPC-A, som næsten alle danske varer har) godtages med det samme.
+  // 8 cifre opstår lettere ved et tilfælde af støj, så de skal findes mindst to steder.
+  const short = new Map();
+  try {
+    for (const [rx, ry, rw, rh] of regions) {
+      // Udsnittet prøves både som det er og drejet 90° – afkoderen er bedst til den ene retning
+      for (const turn of [false, true]) {
+        const code = await decodeRegion(bmp, rx * W, ry * H, rw * W, rh * H, 2000, turn, true);
+        if (!code) continue;
+        if (code.length >= 12) return code;
+        short.set(code, (short.get(code) || 0) + 1);
+        if (short.get(code) >= 2) return code;
+      }
+    }
+  } finally {
+    bmp.close?.();
+  }
+  return null;
+}
+
+$('#barcode-photo').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  await stopScanner();
+  const status = $('#scan-status');
+  status.textContent = 'Leder efter stregkoden på billedet…';
+  const code = await decodeBarcodePhoto(file).catch(() => null);
+  if (code) await lookupBarcode(code);
+  else status.textContent = 'Fandt ingen stregkode på billedet. Tag det tættere på, eller skriv tallene under stregkoden.';
+};
 
 function makeScanner(lib, elementId) {
   const F = lib.Html5QrcodeSupportedFormats;
@@ -260,8 +385,7 @@ function cameraError() {
 }
 
 // ---------- Scan stregkode ind i en ny vare ----------
-let formScanner = null;
-let formScanning = false;
+const formScanner = createCameraScanner($('#form-reader'));
 let saveAfterScan = false;
 
 function formScanStatus(msg, cls = '') {
@@ -272,39 +396,45 @@ function formScanStatus(msg, cls = '') {
 }
 
 async function startFormScan() {
-  if (formScanning) return stopFormScan(); // knappen virker også som "stop"
-  const lib = window.__Html5QrcodeLibrary__;
-  if (!lib) return formScanStatus('Scanner kunne ikke indlæses.', 'warn');
-  await stopScanner(); // kun ét kamera ad gangen
-  formScanner ??= makeScanner(lib, 'form-reader');
-  formScanning = true;
+  if (formScanner.running) return stopFormScan(); // knappen virker også som "stop"
+  stopScanner(); // kun ét kamera ad gangen
   $('#form-reader').hidden = false;
   $('#scan-barcode-btn').textContent = 'Stop';
   formScanStatus('Peg kameraet mod stregkoden på pakken');
   $('#form-reader').scrollIntoView({ behavior: 'smooth', block: 'center' });
   try {
-    await formScanner.start({ facingMode: 'environment' }, SCAN_CONFIG, onFormScan, () => {});
+    await formScanner.start(onFormScan);
   } catch (err) {
     console.warn(err);
-    await stopFormScan();
+    stopFormScan();
     formScanStatus(cameraError(), 'warn');
   }
 }
 
-async function stopFormScan() {
-  if (formScanner && formScanning) {
-    formScanning = false;
-    try { await formScanner.stop(); } catch {}
-  }
-  formScanning = false;
+function stopFormScan() {
+  formScanner.stop();
   $('#form-reader').hidden = true;
   $('#scan-barcode-btn').textContent = '📷 Scan';
 }
 
-async function onFormScan(code) {
-  if (!formScanning) return;
+function onFormScan(code) {
   navigator.vibrate?.(50);
+  stopFormScan();
+  setFormBarcode(code);
+}
+
+$('#form-barcode-photo').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
   await stopFormScan();
+  formScanStatus('Leder efter stregkoden på billedet…');
+  const code = await decodeBarcodePhoto(file).catch(() => null);
+  if (code) setFormBarcode(code);
+  else formScanStatus('Fandt ingen stregkode på billedet. Tag det tættere på, eller skriv tallene.', 'warn');
+};
+
+function setFormBarcode(code) {
   const f = $('#food-form');
   f.barcode.value = code;
   f.barcode.classList.remove('ocr-missing');
@@ -326,18 +456,12 @@ $('#reminder-skip').onclick = () => {
 };
 $('#food-form').barcode.addEventListener('input', () => { $('#barcode-reminder').hidden = true; });
 
-async function stopScanner() {
-  if (scanner && scanning) {
-    scanning = false;
-    try { await scanner.stop(); } catch {}
-  }
+function stopScanner() {
+  scanner.stop();
 }
 
 async function onScan(code) {
-  if (handlingCode) return;
-  handlingCode = true;
   navigator.vibrate?.(50);
-  await stopScanner();
   await lookupBarcode(code);
 }
 
@@ -881,6 +1005,10 @@ async function loadFrida() {
 }
 
 // ---------- Start ----------
+// Indbyggede app-browsere (Messenger, Facebook, Instagram, TikTok …) giver ofte ikke adgang til kameraet
+if (/FBAN|FBAV|FB_IAB|Messenger|Instagram|TikTok|Snapchat|LinkedInApp|GSA\//i.test(navigator.userAgent)) {
+  $('#inapp-warning').hidden = false;
+}
 renderDay();
 loadFrida();
 // Ny dag ved midnat / når appen åbnes igen

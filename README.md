@@ -47,7 +47,7 @@ Når DTU udgiver en ny version:
 | `index.html`, `styles.css`, `app.js` | Selve appen |
 | `sw.js`, `manifest.json`, `icons/` | Offline og hjemmeskærm |
 | `data/frida.json` | Frida-data, konverteret af `tools/frida-til-json.js` |
-| `vendor/html5-qrcode.min.js` | Stregkodescanner ([html5-qrcode](https://github.com/mebjas/html5-qrcode) 2.3.8, Apache-2.0) |
+| `vendor/html5-qrcode.min.js` | Stregkode-afkoder ([html5-qrcode](https://github.com/mebjas/html5-qrcode) 2.3.8, Apache-2.0). Rettet: `TRY_HARDER` er slået til, så lodrette stregkoder kan læses. Kameraet styres af `app.js`, som afkoder i fuld opløsning. |
 
 ## Datakilder
 

@@ -41,7 +41,7 @@ async function loadGray(file, crop) {
   const sw = crop ? crop.w * bmp.width : bmp.width;
   const sh = crop ? crop.h * bmp.height : bmp.height;
   // Små tekster forstørres (Tesseract vil gerne have ~30 px høje bogstaver), store skaleres ned
-  let scale = Math.min(3, Math.max(0.3, 1800 / Math.max(sw, sh)));
+  let scale = Math.min(4, Math.max(0.3, 2400 / Math.max(sw, sh)));
   if (Math.max(sw, sh) * scale > 3000) scale = 3000 / Math.max(sw, sh);
   const w = Math.max(1, Math.round(sw * scale));
   const h = Math.max(1, Math.round(sh * scale));
@@ -215,30 +215,34 @@ export function parseNutrition(raw) {
     .replace(/k\s*cal/g, 'kcal');
   const out = {};
 
-  // Energi: "1520 kJ / 362 kcal", "362 kcal", "kJ/kcal 1520/362" eller kun kJ
+  // Energi: "1520 kJ / 362 kcal", "362 kcal", "kJ/kcal 1520/362" eller kun kJ.
+  // OCR læser ofte "kcal" som "keal", "koal", "kca1", "kea" – det godtages også.
+  const KCAL = 'k[ceoa]{1,2}[l1i]?\\b';
   let m = text.match(/kj\s*\/\s*kcal[^\d]{0,15}(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
   if (m) out.kcal = +m[2];
-  if (out.kcal == null && (m = text.match(/(\d+(?:\.\d+)?)\s*kcal/))) out.kcal = +m[1];
+  if (out.kcal == null && (m = text.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*\\(?\\s*${KCAL}`)))) out.kcal = +m[1];
   if (out.kcal == null && (m = text.match(/(\d+(?:\.\d+)?)\s*kj/))) out.kcal = Math.round(+m[1] / 4.184);
 
-  const rules = {
-    fat: /\b(fedt|fed|fat|matiere grasse)\b/,
-    carbs: /(kulhydrat|carbohydrat|kolhydrat|karbohydrat)/,
-    protein: /\bprotein/,
-  };
-  // Underlinjer som "heraf mættede fedtsyrer" / "heraf sukkerarter" skal ikke bruges
-  const skip = /heraf|hvoraf|mættede|mættet|sukker|saturat|sugar|of which|umættede|fedtsyre/;
+  const lines = text.split('\n');
 
-  for (let line of text.split('\n')) {
+  // "Fedt, mættede fedtsyrer, protein – ubetydelige mængder" (bruges på fx energidrikke) = 0
+  for (const line of lines) {
+    if (!/ubetydelig|negligible|ubetyd/.test(line)) continue;
+    if (/fedt|fat\b/.test(line)) out.fat ??= 0;
+    if (/protein/.test(line)) out.protein ??= 0;
+    if (/kulhydrat|carbohydrat/.test(line)) out.carbs ??= 0;
+  }
+
+  for (let line of lines) {
     // Klip linjen ved "heraf …", så "Fedt 6,9 g heraf mættede 2,1 g" stadig giver 6,9
-    const s = line.search(skip);
+    const s = cutAt(line);
     if (s >= 0) line = line.slice(0, s);
-    for (const [key, re] of Object.entries(rules)) {
+    for (const key of ['fat', 'carbs', 'protein']) {
       if (out[key] != null) continue;
-      const hit = line.match(re);
+      const hit = findKey(line, key);
       if (!hit) continue;
       // "0 g" læses ofte som "Og"/"O g"/"o" – et løst o efter nøgleordet er et nul
-      const after = line.slice(hit.index + hit[0].length).replace(/(^|[^a-zæøå\d])o(?=\s*g\b|\s|$)/g, '$10');
+      const after = line.slice(hit.end).replace(/(^|[^a-zæøå\d])o(?=\s*g\b|\s|$)/g, '$10');
       const n = after.match(/(<\s*)?(\d+(?:\.\d+)?)\s*(g\b)?/);
       if (!n) continue;
       let s = n[2];
@@ -251,4 +255,50 @@ export function parseNutrition(raw) {
   }
   if (out.kcal != null && (out.kcal < 0 || out.kcal > 950)) delete out.kcal; // urealistisk pr. 100 g (0 er ok: light-sodavand)
   return out;
+}
+
+// ---------- Nøgleord, også når OCR har læst dem lidt forkert ----------
+const EXACT = {
+  fat: /\b(fedt|fed|fat|matiere grasse)\b/,
+  carbs: /(kulhydrat|carbohydrat|kolhydrat|karbohydrat)/,
+  protein: /\bprotein/,
+};
+const FUZZY = { fat: ['fedt'], carbs: ['kulhydrat', 'kulhydrater', 'carbohydrate'], protein: ['protein'] };
+// Underlinjer ("heraf mættede fedtsyrer", "heraf sukkerarter") – deres tal må ikke bruges
+const SKIP = /heraf|hvoraf|mættede|mættet|sukker|saturat|sugar|of which|umættede|fedtsyre/;
+const SKIP_WORDS = ['heraf', 'hvoraf', 'mættede', 'sukkerarter', 'fedtsyrer'];
+
+function lev(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return d[a.length][b.length];
+}
+const similar = (word, target) => 1 - lev(word, target) / Math.max(word.length, target.length);
+
+/** Position hvor linjen skal klippes (start på "heraf …"), eller -1. */
+function cutAt(line) {
+  const s = line.search(SKIP);
+  if (s >= 0) return s;
+  for (const m of line.matchAll(/[a-zæøå]{5,}/g)) {
+    if (SKIP_WORDS.some((w) => similar(m[0], w) >= 0.6)) return m.index;
+  }
+  return -1;
+}
+
+/** Find nøgleordet i linjen: præcist, ellers et af de første ord der ligner (fx "uliyorat" ≈ "kulhydrat"). */
+function findKey(line, key) {
+  const hit = line.match(EXACT[key]);
+  if (hit) return { end: hit.index + hit[0].length };
+  // Kun de første to ord – nøgleordet står forrest i rækken
+  const words = [...line.matchAll(/[a-zæøå]{4,}/g)].slice(0, 2);
+  for (const w of words) {
+    const need = w[0].length <= 5 ? 0.75 : 0.6; // korte ord kræver tættere match
+    if (FUZZY[key].some((t) => similar(w[0], t) >= need)) return { end: w.index + w[0].length };
+  }
+  return null;
 }

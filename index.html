@@ -17,6 +17,11 @@
 <body>
   <!-- Dagbog -->
   <main id="view-day" class="view">
+    <div id="inapp-warning" class="card warning" hidden>
+      <b>Åbn appen i Safari</b>
+      <p>Du har åbnet appen inde i en anden app (fx Messenger). Her virker kameraet og stregkodescanneren ofte ikke, og dine data kan forsvinde.</p>
+      <p>Tryk på <b>•••</b> øverst og vælg <b>Åbn i Safari</b>. Læg den derefter på hjemmeskærmen: Del → Føj til hjemmeskærm.</p>
+    </div>
     <header class="daybar">
       <button class="icon-btn" id="prev-day" aria-label="Forrige dag">‹</button>
       <button class="day-title" id="day-title">I dag</button>
@@ -102,6 +107,10 @@
         <input type="text" inputmode="numeric" name="code" placeholder="…eller skriv stregkoden" autocomplete="off">
         <button class="btn" type="submit">Slå op</button>
       </form>
+      <label class="btn ghost wide">📷 Tag billede af stregkoden i stedet
+        <input type="file" accept="image/*" id="barcode-photo" hidden>
+      </label>
+      <p class="muted center scan-tip">Står stregkoden lodret? Så drej telefonen, eller tag et billede af den.</p>
     </div>
 
     <div class="tab" data-tab="search" hidden>
@@ -136,6 +145,9 @@
           <div class="row">
             <input name="barcode" inputmode="numeric" autocomplete="off" placeholder="Scan eller skriv" aria-label="Stregkode">
             <button type="button" class="btn" id="scan-barcode-btn">📷 Scan</button>
+            <label class="btn" title="Tag billede af stregkoden">Foto
+              <input type="file" accept="image/*" id="form-barcode-photo" hidden>
+            </label>
           </div>
           <div id="form-reader" hidden></div>
           <p id="form-scan-status" class="muted" hidden></p>
@@ -184,6 +196,7 @@
   </dialog>
 
   <input type="date" id="date-picker" class="visually-hidden" tabindex="-1">
+  <div id="file-reader" hidden></div>
   <div id="toast" role="status" popover="manual"></div>
 
   <script src="vendor/html5-qrcode.min.js"></script>
