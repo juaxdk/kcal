@@ -88,16 +88,13 @@ function nutrients(food, grams) {
 }
 
 // Drikkevarer (food.unit === 'ml'): mængden gemmes stadig i "grams"-feltet, men som ml,
-// og næringsindholdet er pr. 100 ml. Vises i cl, og fra 1 liter og op i liter.
+// og næringsindholdet er pr. 100 ml. Vises i ml, og fra 1 liter og op i liter.
 const isDrink = (food) => food?.unit === 'ml';
 function amountText(food, amount) {
   if (!isDrink(food)) return `${r1(amount)} g`;
-  return amount >= 1000 ? `${r1(amount / 1000)} l` : `${r1(amount / 10)} cl`;
+  return amount >= 1000 ? `${r1(amount / 1000)} l` : `${r1(amount)} ml`;
 }
 const per100Text = (food) => (isDrink(food) ? 'pr. 100 ml' : 'pr. 100 g');
-// Indtastning sker i cl for drikkevarer
-const toInput = (food, amount) => (isDrink(food) ? amount / 10 : amount);
-const fromInput = (food, value) => (isDrink(food) ? value * 10 : value);
 let toastTimer;
 function toast(msg) {
   const el = $('#toast');
@@ -523,7 +520,7 @@ const NOT_DRINK_WORDS = /bar(?!\p{L})|chokolade|pulver|chips|slik|gummi|kiks|kag
 const looksLikeDrink = (s) => DRINK_WORDS.test(s) && !NOT_DRINK_WORDS.test(s);
 
 // Indlæg i dagbogen har en kopi af varen. Er varen siden blevet en drikkevare,
-// vises indlægget også i cl (mængden er den samme, da 1 g ≈ 1 ml).
+// vises indlægget også i ml (mængden er den samme, da 1 g ≈ 1 ml).
 function syncEntryUnits() {
   let changed = false;
   for (const day of Object.values(state.log)) {
@@ -753,7 +750,7 @@ function resetFoodForm() {
 function updateDrinkLabels() {
   const drink = $('#food-form').drink.checked;
   $('#per100-note').textContent = `Pr. 100 ${drink ? 'ml' : 'g'} (står på bagsiden af pakken)`;
-  $('#serving-label').textContent = `Portion i ${drink ? 'cl' : 'gram'} (valgfri)`;
+  $('#serving-label').textContent = `Portion i ${drink ? 'ml' : 'gram'} (valgfri)`;
 }
 $('#food-form').drink.addEventListener('change', (e) => {
   e.target.dataset.touched = '1';
@@ -906,7 +903,7 @@ function editFood(food) {
   MACROS.forEach((m) => (f[m].value = fmt(food.per100[m])));
   f.drink.checked = isDrink(food);
   f.drink.dataset.touched = '1';
-  f.serving.value = food.serving ? fmt(toInput(food, food.serving)) : '';
+  f.serving.value = food.serving ? fmt(food.serving) : '';
   updateDrinkLabels();
   f.querySelector('[type=submit]').textContent = 'Gem ændringer';
   f.dataset.keep = '1';
@@ -952,7 +949,7 @@ $('#food-form').onsubmit = (e) => {
     brand: f.brand.value.trim(),
     barcode: f.barcode.value.replace(/\D/g, '') || null,
     per100: Object.fromEntries(MACROS.map((m) => [m, num(f[m].value)])),
-    serving: fromInput({ unit }, num(f.serving.value)) || null,
+    serving: num(f.serving.value) || null,
   };
   if (!unit) delete food.unit;
   // Én stregkode = én vare: den nye/redigerede vare overtager stregkoden
@@ -980,10 +977,10 @@ function openAmount(food, { entry } = {}) {
   amountCtx = { food, entry };
   $('#amount-name').textContent = food.name;
   $('#amount-sub').textContent = [food.brand, `${r0(food.per100.kcal)} kcal ${per100Text(food)}`].filter(Boolean).join(' · ');
-  $('#amount-unit').textContent = isDrink(food) ? 'cl' : 'gram';
+  $('#amount-unit').textContent = isDrink(food) ? 'ml' : 'gram';
 
   const grams = entry?.grams ?? food.lastGrams ?? food.serving ?? (isDrink(food) ? 250 : 100);
-  $('#grams-input').value = fmt(toInput(food, grams));
+  $('#grams-input').value = fmt(grams);
 
   const chips = new Set();
   if (food.serving) chips.add(food.serving);
@@ -1002,7 +999,7 @@ function openAmount(food, { entry } = {}) {
 
 function updatePreview() {
   if (!amountCtx) return;
-  const n = nutrients(amountCtx.food, fromInput(amountCtx.food, num($('#grams-input').value)));
+  const n = nutrients(amountCtx.food, num($('#grams-input').value));
   $('#amount-preview').innerHTML = `
     <div><b>${r0(n.kcal)}</b><span class="muted">kcal</span></div>
     <div><b>${r1(n.protein)}</b><span class="muted">protein</span></div>
@@ -1014,14 +1011,14 @@ $('#grams-input').addEventListener('input', updatePreview);
 $('#grams-chips').addEventListener('click', (e) => {
   const b = e.target.closest('[data-g]');
   if (!b) return;
-  $('#grams-input').value = fmt(toInput(amountCtx.food, +b.dataset.g));
+  $('#grams-input').value = fmt(+b.dataset.g);
   updatePreview();
 });
 
 $('#amount-form').onsubmit = (e) => {
   e.preventDefault();
   const { food, entry } = amountCtx;
-  const grams = fromInput(food, num($('#grams-input').value));
+  const grams = num($('#grams-input').value);
   if (grams <= 0) return toast('Skriv en mængde');
   const meal = $('#meal-select').value;
   const day = (state.log[state.day] ||= []);
@@ -1112,7 +1109,7 @@ const FRIDA_DRINK_GROUPS = new Set([
   'Frugtjuice, frugtsaft og smoothies', 'Bærjuice og bærsaft', 'Grøntsagsjuice',
   'Øl og andre maltdrikke', 'Cider', 'Vine', 'Hedvine', 'Spiritus', 'Likør',
 ]);
-// Drikkevarer måles i cl – men ikke pulver, kaffebønner og teblade i de samme grupper
+// Drikkevarer måles i ml – men ikke pulver, kaffebønner og teblade i de samme grupper
 function fridaIsDrink(r) {
   if (/pulver|bønne|blade|yoghurt|tykmælk|is\b/i.test(r.name)) return false;
   return FRIDA_DRINK_GROUPS.has(r.group) || /(mælk|drik|kefir|milkshake)\b/i.test(r.name);
