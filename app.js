@@ -1049,7 +1049,10 @@ $('#delete-entry').onclick = () => {
 function renderSettings() {
   const f = $('#goals-form');
   MACROS.forEach((m) => (f[m].value = fmt(state.goals[m])));
-  const foods = Object.values(state.foods).sort((a, b) => a.name.localeCompare(b.name, 'da'));
+  // Kun varer brugeren selv har oprettet – ikke dem fra Open Food Facts eller Frida
+  const foods = Object.values(state.foods)
+    .filter((f) => f.source === 'custom')
+    .sort((a, b) => a.name.localeCompare(b.name, 'da'));
   $('#my-foods').innerHTML = foods.length
     ? foods.map((food) => `<li data-food="${esc(food.id)}">
         <div><div class="name">${esc(food.name)}</div><div class="sub">${esc(food.brand || '')}</div></div>
