@@ -1,6 +1,6 @@
 // Gemmer appens egne filer, så den kan åbne uden net.
 // Hæv VERSION når filerne ændres, så telefonen henter den nye udgave.
-const VERSION = 'kcal-v13';
+const VERSION = 'kcal-v14';
 const SHELL = [
   './',
   'index.html',

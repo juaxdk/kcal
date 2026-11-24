@@ -202,8 +202,23 @@ function guessMeal() {
   return 'snack';
 }
 
+// Vælg måltid øverst i tilføj-arket – det bestemmer hvor varen havner
+function setAddMeal(meal) {
+  currentMeal = meal;
+  $$('#add-meal button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.meal === meal);
+    b.setAttribute('aria-checked', b.dataset.meal === meal);
+  });
+}
+$('#add-meal').innerHTML = MEALS.map(([k, l]) => `<button type="button" role="radio" data-meal="${k}">${l}</button>`).join('');
+$('#add-meal').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-meal]');
+  if (b) setAddMeal(b.dataset.meal);
+});
+
 function openAdd(meal) {
-  currentMeal = meal || guessMeal();
+  setAddMeal(meal || guessMeal());
+  $('#add-meal').hidden = false;
   delete $('#food-form').dataset.editOnly;
   const sheet = $('#add-sheet');
   if (!sheet.open) sheet.showModal();
@@ -212,12 +227,12 @@ function openAdd(meal) {
 
 $('#add-sheet').addEventListener('close', () => { stopScanner(); stopFormScan(); });
 
-$$('#add-sheet .seg button').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+$$('#add-sheet .seg button[data-tab]').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
 function showTab(tab) {
   currentTab = tab;
   store.set('lastTab', tab === 'manual' ? 'scan' : tab);
-  $$('#add-sheet .seg button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  $$('#add-sheet .seg button[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   $$('#add-sheet .tab').forEach((t) => (t.hidden = t.dataset.tab !== tab));
   stopFormScan();
   if (tab === 'scan') startScanner();
@@ -908,6 +923,7 @@ function editFood(food) {
   f.querySelector('[type=submit]').textContent = 'Gem ændringer';
   f.dataset.keep = '1';
   f.dataset.editOnly = '1';
+  $('#add-meal').hidden = true; // kun redigering – intet måltid
   $('#add-sheet').showModal();
   showTab('manual');
 }
