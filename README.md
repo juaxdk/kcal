@@ -5,7 +5,11 @@ En simpel kalorietæller til eget brug. Den kører som webapp (PWA) og kan lægg
 - **Scan stregkoder** med kameraet. Varen slås op i [Open Food Facts](https://world.openfoodfacts.org).
 - **Søg i danske råvarer** fra Frida, DTU's fødevaredatabase (1.390 fødevarer).
 - **Opret egne varer**, når en stregkode ikke findes. Appen husker dem.
-- **Tag et billede af næringsdeklarationen.** Tallene aflæses på telefonen med [Tesseract.js](https://github.com/naptha/tesseract.js) og udfyldes, så du kan tjekke dem, før du gemmer. Billedet sendes ingen steder hen.
+- **Tag et billede af næringsdeklarationen.** Tallene aflæses gratis på telefonen med [Tesseract.js](https://github.com/naptha/tesseract.js) og udfyldes, så du kan tjekke dem, før du gemmer. Billedet sendes ingen steder hen.
+  - Billedet læses i op til fire udgaver (kontrast, mod genskin, lys tekst på mørk bund og omvendte farver), så dåser og blanke pakker også kan læses.
+  - Du kan trække en firkant om tabellen, så kun den bliver læst.
+  - Et energitjek (kcal ≈ 4·protein + 4·kulhydrat + 9·fedt) vælger det bedste resultat og advarer, hvis tallene ikke passer sammen.
+- **Påmindelse om stregkoden**, når en ny vare gemmes, så den kan scannes direkte næste gang.
 - Dagbog med fire måltider, dagsmål for kcal, protein, kulhydrat og fedt, og eksport/import som backup.
 
 Alt gemmes lokalt på telefonen (localStorage). Der er ingen server og intet login.

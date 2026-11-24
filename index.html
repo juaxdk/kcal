@@ -118,7 +118,12 @@
         <input type="file" accept="image/*" id="label-photo" hidden>
       </label>
       <div id="ocr-box" hidden>
-        <img id="ocr-img" alt="Billede af næringsdeklaration">
+        <div id="ocr-frame">
+          <img id="ocr-img" alt="Billede af næringsdeklaration" draggable="false">
+          <div id="crop-rect" hidden></div>
+        </div>
+        <p class="muted center crop-hint">Træk en firkant om tabellen for et bedre resultat</p>
+        <button type="button" class="btn primary wide" id="ocr-reread" hidden>Læs markeringen</button>
         <p id="ocr-status" class="muted"></p>
         <details><summary class="muted">Se aflæst tekst</summary><pre id="ocr-text"></pre></details>
       </div>

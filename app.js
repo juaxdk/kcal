@@ -2,7 +2,7 @@
 // Data gemmes i localStorage på telefonen. Stregkoder slås op i Open Food Facts,
 // råvarer kan søges i Frida (DTU), hvis data/frida.json findes.
 
-import { readLabel, parseNutrition } from './ocr.js';
+import { analyzeLabel } from './ocr.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -541,62 +541,122 @@ function resetFoodForm() {
 let ocrUrl = null;
 let ocrRun = 0;
 
+let ocrFile = null;
+let ocrBusy = false;
+let crop = null; // markeret udsnit som brøkdele af billedet
+
 function clearOcr() {
   ocrRun++; // ignorér en aflæsning der stadig kører
+  ocrBusy = false;
+  ocrFile = null;
+  setCrop(null);
   $('#ocr-box').hidden = true;
   $('#ocr-text').textContent = '';
-  $('#ocr-img').classList.remove('zoom');
   if (ocrUrl) { URL.revokeObjectURL(ocrUrl); ocrUrl = null; }
   $$('#food-form input').forEach((i) => i.classList.remove('ocr-filled', 'ocr-missing'));
 }
 
-$('#label-photo').onchange = async (e) => {
+$('#label-photo').onchange = (e) => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   clearOcr();
-  const run = ocrRun;
+  ocrFile = file;
   ocrUrl = URL.createObjectURL(file);
   $('#ocr-img').src = ocrUrl;
   $('#ocr-box').hidden = false;
+  runOcr();
+};
+
+async function runOcr() {
+  if (!ocrFile || ocrBusy) return;
+  const run = ++ocrRun;
+  ocrBusy = true;
   const status = $('#ocr-status');
   status.classList.remove('warn');
-  const btn = $('.photo-btn');
-  btn.style.pointerEvents = 'none';
+  $('.photo-btn').style.pointerEvents = 'none';
+  $('#ocr-reread').disabled = true;
   try {
-    const text = await readLabel(file, (msg) => { if (run === ocrRun) status.textContent = msg; });
+    const { found, text, consistent } = await analyzeLabel(ocrFile, {
+      crop,
+      onProgress: (msg) => { if (run === ocrRun) status.textContent = msg; },
+    });
     if (run !== ocrRun) return;
     $('#ocr-text').textContent = text.trim() || '(ingen tekst fundet)';
-    const found = parseNutrition(text);
     const f = $('#food-form');
     for (const m of MACROS) {
       const input = f[m];
+      input.classList.remove('ocr-filled', 'ocr-missing');
       if (found[m] != null) {
         input.value = fmt(found[m]);
         input.classList.add('ocr-filled');
-      } else {
+      } else if (!input.value) {
         input.classList.add('ocr-missing');
       }
     }
     const n = MACROS.filter((m) => found[m] != null).length;
-    status.classList.toggle('warn', n < 4);
-    status.textContent = n === 0
-      ? 'Kunne ikke finde tallene. Prøv et skarpere billede tæt på tabellen – eller skriv dem selv.'
+    const tip = crop ? '' : ' Tip: træk en firkant om tabellen på billedet og tryk "Læs markeringen".';
+    status.classList.toggle('warn', n < 4 || consistent === false);
+    status.textContent = consistent === false
+      ? '⚠️ Tallene passer ikke sammen (kcal stemmer ikke med protein, kulhydrat og fedt). Tjek dem ekstra godt mod billedet.' + tip
+      : n === 0
+      ? 'Kunne ikke finde tallene.' + (tip || ' Prøv et skarpere billede tæt på tabellen – eller skriv dem selv.')
       : n < 4
-        ? `Fandt ${n} af 4 værdier. Tjek dem mod billedet og udfyld de stiplede felter.`
+        ? `Fandt ${n} af 4 værdier. Tjek dem mod billedet og udfyld de stiplede felter.` + tip
         : 'Fandt alle 4 værdier. Tjek dem mod billedet, før du gemmer.';
-    if (!f.name.value) f.name.focus({ preventScroll: true });
   } catch (err) {
     if (run !== ocrRun) return;
     console.warn(err);
     status.classList.add('warn');
     status.textContent = 'Aflæsningen fejlede – tjek forbindelsen (første gang skal der hentes data).';
   } finally {
-    btn.style.pointerEvents = '';
+    if (run === ocrRun) ocrBusy = false;
+    $('.photo-btn').style.pointerEvents = '';
+    $('#ocr-reread').disabled = false;
   }
-};
+}
 
-$('#ocr-img').onclick = (e) => e.target.classList.toggle('zoom');
+// ---------- Markér tabellen på billedet ----------
+function setCrop(c) {
+  crop = c;
+  const rect = $('#crop-rect');
+  rect.hidden = !c;
+  $('#ocr-reread').hidden = !c;
+  if (c) Object.assign(rect.style, { left: c.x * 100 + '%', top: c.y * 100 + '%', width: c.w * 100 + '%', height: c.h * 100 + '%' });
+}
+
+(() => {
+  const frame = $('#ocr-frame');
+  let start = null;
+  const pos = (e) => {
+    const r = frame.getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+  };
+  const rectFrom = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) });
+  frame.addEventListener('pointerdown', (e) => {
+    start = pos(e);
+    frame.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  frame.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const c = rectFrom(start, pos(e));
+    crop = null; // først gyldig når fingeren slippes
+    const rect = $('#crop-rect');
+    rect.hidden = false;
+    Object.assign(rect.style, { left: c.x * 100 + '%', top: c.y * 100 + '%', width: c.w * 100 + '%', height: c.h * 100 + '%' });
+  });
+  const end = (e) => {
+    if (!start) return;
+    const c = rectFrom(start, pos(e));
+    start = null;
+    setCrop(c.w > 0.05 && c.h > 0.05 ? c : null); // et kort tryk fjerner markeringen
+  };
+  frame.addEventListener('pointerup', end);
+  frame.addEventListener('pointercancel', () => { start = null; setCrop(crop); });
+})();
+
+$('#ocr-reread').onclick = () => runOcr();
 $('#food-form').addEventListener('input', (e) => e.target.classList?.remove('ocr-filled', 'ocr-missing'));
 
 function editFood(food) {
