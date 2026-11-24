@@ -1,6 +1,6 @@
 // Gemmer appens egne filer, så den kan åbne uden net.
 // Hæv VERSION når filerne ændres, så telefonen henter den nye udgave.
-const VERSION = 'kcal-v10';
+const VERSION = 'kcal-v11';
 const SHELL = [
   './',
   'index.html',
@@ -31,7 +31,8 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // API-kald går direkte på nettet
   // Net først (så nye versioner slår igennem), cache som reserve offline
   e.respondWith(
-    fetch(e.request)
+    // no-cache: spørg altid serveren, så telefonens HTTP-cache ikke giver en gammel app.js
+    fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

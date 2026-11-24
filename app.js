@@ -522,15 +522,41 @@ const DRINK_WORDS = /(?<!\p{L})(monster|red ?bull|cult|faxe|kondi|cola|coca|peps
 const NOT_DRINK_WORDS = /bar(?!\p{L})|chokolade|pulver|chips|slik|gummi|kiks|kage|bønner/iu;
 const looksLikeDrink = (s) => DRINK_WORDS.test(s) && !NOT_DRINK_WORDS.test(s);
 
+// Indlæg i dagbogen har en kopi af varen. Er varen siden blevet en drikkevare,
+// vises indlægget også i cl (mængden er den samme, da 1 g ≈ 1 ml).
+function syncEntryUnits() {
+  let changed = false;
+  for (const day of Object.values(state.log)) {
+    for (const e of day) {
+      if (e.food.unit == null && isDrink(state.foods[e.food.id])) {
+        e.food.unit = 'ml';
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    save();
+    renderDay();
+  }
+}
+
 // Varer gemt før cl/liter fandtes: genkend drikkevarer på navnet, og slå scannede varer op igen
 async function upgradeOldFoods() {
+  // Også varer der kun findes i dagbogen (fx slettet fra "mine varer")
+  for (const day of Object.values(state.log)) {
+    for (const e of day) {
+      if (e.food.unit == null && !state.foods[e.food.id] && looksLikeDrink(e.food.name + ' ' + (e.food.brand || ''))) {
+        e.food.unit = 'ml';
+      }
+    }
+  }
   const old = Object.values(state.foods).filter((f) => f.source !== 'frida' && f.unit == null && !f.unitChecked);
-  if (!old.length) return;
   for (const f of old) {
     if (looksLikeDrink(f.name + ' ' + (f.brand || ''))) f.unit = 'ml';
     if (f.source !== 'off' || f.unit) f.unitChecked = true;
   }
   save();
+  syncEntryUnits();
   for (const f of old.filter((f) => !f.unitChecked && f.barcode)) {
     try {
       const fresh = await fetchOFF(f.barcode);
@@ -542,6 +568,7 @@ async function upgradeOldFoods() {
       }
       cur.unitChecked = true;
       save();
+      syncEntryUnits();
     } catch {
       return; // intet net – prøv igen næste gang appen åbnes
     }
@@ -934,6 +961,7 @@ $('#food-form').onsubmit = (e) => {
   }
   state.foods[id] = food;
   save();
+  syncEntryUnits();
   const editOnly = f.dataset.editOnly;
   delete f.dataset.editOnly;
   $('#add-sheet').close();
@@ -1115,6 +1143,7 @@ async function loadFrida() {
       }
     }
     if (changed) save();
+    syncEntryUnits();
   } catch {
     // Ingen Frida-data endnu – det er fint
   }
