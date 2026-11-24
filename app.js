@@ -76,6 +76,9 @@ const num = (v) => {
 };
 const r0 = (n) => Math.round(n).toLocaleString('da-DK');
 const r1 = (n) => (Math.round(n * 10) / 10).toLocaleString('da-DK');
+// Til inputfelter: dansk komma, ingen tusindtalsseparator, tomt for manglende værdi
+const fmt = (n) => (n == null || n === '' || !Number.isFinite(+n) ? '' : String(Math.round(n * 10) / 10).replace('.', ','));
+const isNum = (v) => /^\s*\d+([.,]\d+)?\s*$/.test(v);
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -491,7 +494,7 @@ $('#label-photo').onchange = async (e) => {
     for (const m of MACROS) {
       const input = f[m];
       if (found[m] != null) {
-        input.value = Math.round(found[m] * 10) / 10;
+        input.value = fmt(found[m]);
         input.classList.add('ocr-filled');
       } else {
         input.classList.add('ocr-missing');
@@ -525,8 +528,8 @@ function editFood(food) {
   f.name.value = food.name;
   f.brand.value = food.brand || '';
   f.barcode.value = food.barcode || '';
-  MACROS.forEach((m) => (f[m].value = food.per100[m] ?? ''));
-  f.serving.value = food.serving || '';
+  MACROS.forEach((m) => (f[m].value = fmt(food.per100[m])));
+  f.serving.value = fmt(food.serving);
   f.querySelector('[type=submit]').textContent = 'Gem ændringer';
   f.dataset.keep = '1';
   f.dataset.editOnly = '1';
@@ -537,6 +540,19 @@ function editFood(food) {
 $('#food-form').onsubmit = (e) => {
   e.preventDefault();
   const f = e.target;
+  // Egen validering (Safari på iPhone blokerer ellers stille uden at sige hvorfor)
+  const bad = [];
+  if (!f.name.value.trim()) bad.push(f.name);
+  if (!isNum(f.kcal.value)) bad.push(f.kcal);
+  for (const k of ['protein', 'carbs', 'fat', 'serving']) {
+    if (f[k].value.trim() && !isNum(f[k].value)) bad.push(f[k]);
+  }
+  if (bad.length) {
+    bad.forEach((i) => i.classList.add('ocr-missing'));
+    bad[0].focus();
+    toast(bad[0] === f.name ? 'Skriv et navn på varen' : 'Tjek de markerede tal');
+    return;
+  }
   const id = f.id.value || 'custom:' + uid();
   const prev = state.foods[id];
   const food = {
@@ -571,7 +587,7 @@ function openAmount(food, { entry } = {}) {
   $('#amount-sub').textContent = [food.brand, `${r0(food.per100.kcal)} kcal pr. 100 g`].filter(Boolean).join(' · ');
 
   const grams = entry?.grams ?? food.lastGrams ?? food.serving ?? 100;
-  $('#grams-input').value = Math.round(grams * 10) / 10;
+  $('#grams-input').value = fmt(grams);
 
   const chips = new Set();
   if (food.serving) chips.add(food.serving);
@@ -602,7 +618,7 @@ $('#grams-input').addEventListener('input', updatePreview);
 $('#grams-chips').addEventListener('click', (e) => {
   const b = e.target.closest('[data-g]');
   if (!b) return;
-  $('#grams-input').value = b.dataset.g;
+  $('#grams-input').value = fmt(+b.dataset.g);
   updatePreview();
 });
 
@@ -639,7 +655,7 @@ $('#delete-entry').onclick = () => {
 // ---------- Indstillinger ----------
 function renderSettings() {
   const f = $('#goals-form');
-  MACROS.forEach((m) => (f[m].value = state.goals[m]));
+  MACROS.forEach((m) => (f[m].value = fmt(state.goals[m])));
   const foods = Object.values(state.foods).sort((a, b) => a.name.localeCompare(b.name, 'da'));
   $('#my-foods').innerHTML = foods.length
     ? foods.map((food) => `<li data-food="${esc(food.id)}">

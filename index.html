@@ -50,11 +50,11 @@
     <header class="daybar"><h1>Indstillinger</h1></header>
     <section class="card">
       <h2>Dagsmål</h2>
-      <form id="goals-form" class="grid2">
-        <label>Kcal<input type="number" inputmode="numeric" name="kcal" min="0"></label>
-        <label>Protein (g)<input type="number" inputmode="numeric" name="protein" min="0"></label>
-        <label>Kulhydrat (g)<input type="number" inputmode="numeric" name="carbs" min="0"></label>
-        <label>Fedt (g)<input type="number" inputmode="numeric" name="fat" min="0"></label>
+      <form novalidate id="goals-form" class="grid2">
+        <label>Kcal<input type="text" inputmode="decimal" autocomplete="off" name="kcal"></label>
+        <label>Protein (g)<input type="text" inputmode="decimal" autocomplete="off" name="protein"></label>
+        <label>Kulhydrat (g)<input type="text" inputmode="decimal" autocomplete="off" name="carbs"></label>
+        <label>Fedt (g)<input type="text" inputmode="decimal" autocomplete="off" name="fat"></label>
         <button class="btn primary span2" type="submit">Gem mål</button>
       </form>
     </section>
@@ -122,17 +122,17 @@
         <p id="ocr-status" class="muted"></p>
         <details><summary class="muted">Se aflæst tekst</summary><pre id="ocr-text"></pre></details>
       </div>
-      <form id="food-form" class="grid2">
+      <form novalidate id="food-form" class="grid2">
         <input type="hidden" name="id">
-        <label class="span2">Navn<input name="name" required></label>
+        <label class="span2">Navn<input name="name" autocomplete="off"></label>
         <label>Mærke<input name="brand"></label>
         <label>Stregkode<input name="barcode" inputmode="numeric"></label>
         <p class="span2 muted">Pr. 100 g (står på bagsiden af pakken)</p>
-        <label>Kcal<input type="number" step="any" inputmode="decimal" name="kcal" required></label>
-        <label>Protein<input type="number" step="any" inputmode="decimal" name="protein"></label>
-        <label>Kulhydrat<input type="number" step="any" inputmode="decimal" name="carbs"></label>
-        <label>Fedt<input type="number" step="any" inputmode="decimal" name="fat"></label>
-        <label class="span2">Portion i gram (valgfri)<input type="number" step="any" inputmode="decimal" name="serving"></label>
+        <label>Kcal<input type="text" inputmode="decimal" autocomplete="off" name="kcal"></label>
+        <label>Protein<input type="text" inputmode="decimal" autocomplete="off" name="protein"></label>
+        <label>Kulhydrat<input type="text" inputmode="decimal" autocomplete="off" name="carbs"></label>
+        <label>Fedt<input type="text" inputmode="decimal" autocomplete="off" name="fat"></label>
+        <label class="span2">Portion i gram (valgfri)<input type="text" inputmode="decimal" autocomplete="off" name="serving"></label>
         <button class="btn primary span2" type="submit">Gem fødevare</button>
       </form>
     </div>
@@ -147,9 +147,9 @@
       </div>
       <button class="icon-btn" data-close aria-label="Luk">✕</button>
     </div>
-    <form id="amount-form">
+    <form novalidate id="amount-form">
       <div class="grams-row">
-        <input type="number" step="any" inputmode="decimal" name="grams" id="grams-input" min="0">
+        <input type="text" inputmode="decimal" autocomplete="off" name="grams" id="grams-input">
         <span>gram</span>
       </div>
       <div class="chips" id="grams-chips"></div>
