@@ -201,7 +201,7 @@ function openAdd(meal) {
   showTab(store.get('lastTab', 'scan'));
 }
 
-$('#add-sheet').addEventListener('close', stopScanner);
+$('#add-sheet').addEventListener('close', () => { stopScanner(); stopFormScan(); });
 
 $$('#add-sheet .seg button').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
@@ -210,6 +210,7 @@ function showTab(tab) {
   store.set('lastTab', tab === 'manual' ? 'scan' : tab);
   $$('#add-sheet .seg button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   $$('#add-sheet .tab').forEach((t) => (t.hidden = t.dataset.tab !== tab));
+  stopFormScan();
   if (tab === 'scan') startScanner();
   else stopScanner();
   if (tab === 'search') {
@@ -228,30 +229,102 @@ async function startScanner() {
   if (scanning) return;
   const lib = window.__Html5QrcodeLibrary__;
   if (!lib) { $('#scan-status').textContent = 'Scanner kunne ikke indlæses.'; return; }
-  const F = lib.Html5QrcodeSupportedFormats;
-  scanner ??= new lib.Html5Qrcode('reader', {
-    formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E],
-    useBarCodeDetectorIfSupported: true,
-    verbose: false,
-  });
+  scanner ??= makeScanner(lib, 'reader');
   scanning = true;
   handlingCode = false;
   $('#scan-status').textContent = 'Peg kameraet mod stregkoden';
   try {
-    await scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: (w, h) => ({ width: Math.min(w * 0.85, 320), height: Math.min(h * 0.5, 140) }) },
-      onScan,
-      () => {}
-    );
+    await scanner.start({ facingMode: 'environment' }, SCAN_CONFIG, onScan, () => {});
   } catch (err) {
     scanning = false;
-    $('#scan-status').textContent = location.protocol === 'https:' || location.hostname === 'localhost'
-      ? 'Ingen adgang til kameraet. Tjek tilladelser i Indstillinger → Safari → Kamera.'
-      : 'Kameraet kræver HTTPS. Åbn appen via https://';
+    $('#scan-status').textContent = cameraError();
     console.warn(err);
   }
 }
+
+const SCAN_CONFIG = { fps: 10, qrbox: (w, h) => ({ width: Math.min(w * 0.85, 320), height: Math.min(h * 0.5, 140) }) };
+
+function makeScanner(lib, elementId) {
+  const F = lib.Html5QrcodeSupportedFormats;
+  return new lib.Html5Qrcode(elementId, {
+    formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E],
+    useBarCodeDetectorIfSupported: true,
+    verbose: false,
+  });
+}
+
+function cameraError() {
+  return location.protocol === 'https:' || location.hostname === 'localhost'
+    ? 'Ingen adgang til kameraet. Tjek tilladelser i Indstillinger → Safari → Kamera.'
+    : 'Kameraet kræver HTTPS. Åbn appen via https://';
+}
+
+// ---------- Scan stregkode ind i en ny vare ----------
+let formScanner = null;
+let formScanning = false;
+let saveAfterScan = false;
+
+function formScanStatus(msg, cls = '') {
+  const el = $('#form-scan-status');
+  el.hidden = !msg;
+  el.textContent = msg || '';
+  el.className = 'muted ' + cls;
+}
+
+async function startFormScan() {
+  if (formScanning) return stopFormScan(); // knappen virker også som "stop"
+  const lib = window.__Html5QrcodeLibrary__;
+  if (!lib) return formScanStatus('Scanner kunne ikke indlæses.', 'warn');
+  await stopScanner(); // kun ét kamera ad gangen
+  formScanner ??= makeScanner(lib, 'form-reader');
+  formScanning = true;
+  $('#form-reader').hidden = false;
+  $('#scan-barcode-btn').textContent = 'Stop';
+  formScanStatus('Peg kameraet mod stregkoden på pakken');
+  $('#form-reader').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  try {
+    await formScanner.start({ facingMode: 'environment' }, SCAN_CONFIG, onFormScan, () => {});
+  } catch (err) {
+    console.warn(err);
+    await stopFormScan();
+    formScanStatus(cameraError(), 'warn');
+  }
+}
+
+async function stopFormScan() {
+  if (formScanner && formScanning) {
+    formScanning = false;
+    try { await formScanner.stop(); } catch {}
+  }
+  formScanning = false;
+  $('#form-reader').hidden = true;
+  $('#scan-barcode-btn').textContent = '📷 Scan';
+}
+
+async function onFormScan(code) {
+  if (!formScanning) return;
+  navigator.vibrate?.(50);
+  await stopFormScan();
+  const f = $('#food-form');
+  f.barcode.value = code;
+  f.barcode.classList.remove('ocr-missing');
+  $('#barcode-reminder').hidden = true;
+  const other = Object.values(state.foods).find((x) => x.barcode === code && x.id !== f.id.value);
+  if (other) formScanStatus(`✓ ${code} – bruges allerede af "${other.name}" og flyttes til denne vare.`, 'warn');
+  else formScanStatus(`✓ Stregkode ${code} tilføjet`, 'ok');
+  if (saveAfterScan) {
+    saveAfterScan = false;
+    f.requestSubmit();
+  }
+}
+
+$('#scan-barcode-btn').onclick = () => { saveAfterScan = false; startFormScan(); };
+$('#reminder-scan').onclick = () => { saveAfterScan = true; startFormScan(); };
+$('#reminder-skip').onclick = () => {
+  $('#food-form').dataset.skipBarcode = '1';
+  $('#food-form').requestSubmit();
+};
+$('#food-form').barcode.addEventListener('input', () => { $('#barcode-reminder').hidden = true; });
 
 async function stopScanner() {
   if (scanner && scanning) {
@@ -456,6 +529,11 @@ function resetFoodForm() {
   f.reset();
   f.id.value = '';
   f.querySelector('[type=submit]').textContent = 'Gem fødevare';
+  delete f.dataset.skipBarcode;
+  saveAfterScan = false;
+  $('#barcode-reminder').hidden = true;
+  formScanStatus('');
+  stopFormScan();
   clearOcr();
 }
 
@@ -553,6 +631,14 @@ $('#food-form').onsubmit = (e) => {
     toast(bad[0] === f.name ? 'Skriv et navn på varen' : 'Tjek de markerede tal');
     return;
   }
+  // Påmindelse: uden stregkode kan varen ikke scannes næste gang
+  if (!f.barcode.value.replace(/\D/g, '') && !f.dataset.skipBarcode) {
+    const r = $('#barcode-reminder');
+    r.hidden = false;
+    r.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  delete f.dataset.skipBarcode;
   const id = f.id.value || 'custom:' + uid();
   const prev = state.foods[id];
   const food = {
@@ -565,6 +651,10 @@ $('#food-form').onsubmit = (e) => {
     per100: Object.fromEntries(MACROS.map((m) => [m, num(f[m].value)])),
     serving: num(f.serving.value) || null,
   };
+  // Én stregkode = én vare: den nye/redigerede vare overtager stregkoden
+  if (food.barcode) {
+    for (const o of Object.values(state.foods)) if (o.id !== id && o.barcode === food.barcode) o.barcode = null;
+  }
   state.foods[id] = food;
   save();
   const editOnly = f.dataset.editOnly;

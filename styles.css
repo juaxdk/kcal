@@ -118,8 +118,15 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 .seg button { flex: 1; border: 0; background: none; padding: 8px; border-radius: 8px; font-weight: 600; color: var(--muted); }
 .seg button.active { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 
-#reader { width: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; background: #000; }
-#reader video { width: 100% !important; object-fit: cover; }
+#reader, #form-reader { width: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; background: #000; }
+#reader video, #form-reader video { width: 100% !important; object-fit: cover; }
+#form-reader { margin-top: 8px; min-height: 180px; }
+.field-label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+#form-scan-status { margin: 6px 0 0; }
+#form-scan-status.ok { color: var(--accent); }
+#form-scan-status.warn { color: var(--c); }
+.reminder { background: color-mix(in srgb, var(--accent) 12%, var(--card)); border: 1px solid var(--accent); border-radius: 12px; padding: 12px; }
+.reminder p { margin: 4px 0 10px; font-size: 14px; }
 #scan-status { margin: 10px 0; }
 
 .photo-btn { margin: 0 0 12px; }
